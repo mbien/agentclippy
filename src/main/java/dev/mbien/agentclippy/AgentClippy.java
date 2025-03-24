@@ -3,7 +3,6 @@ package dev.mbien.agentclippy;
 import java.io.IOException;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.Label;
-import java.lang.classfile.constantpool.ClassEntry;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.DirectMethodHandleDesc;
 import java.lang.constant.DynamicCallSiteDesc;
@@ -11,7 +10,7 @@ import java.lang.constant.MethodHandleDesc;
 import java.lang.constant.MethodTypeDesc;
 import java.nio.file.Path;
 
-import static java.lang.classfile.ClassFile.ACC_PUBLIC;
+import static java.lang.classfile.ClassFile.ACC_PRIVATE;
 import static java.lang.constant.ConstantDescs.CD_Object;
 import static java.lang.constant.ConstantDescs.MTD_void;
 import static java.lang.constant.ConstantDescs.CD_void;
@@ -27,7 +26,6 @@ public class AgentClippy {
     /// The two methods and their javap -v -p outputs are in the comments for reference.
     public static void main(String[] args) throws IOException, InterruptedException {
         
-        // todo: public -> private
         // intercept / transform
         
         ClassDesc CD_WClipboard = ClassDesc.of("sun.awt.windows.WClipboard");
@@ -47,7 +45,7 @@ public class AgentClippy {
                 //        }
                 //        SunToolkit.postEvent(appContext, new InvocationEvent(Toolkit.getDefaultToolkit(), this::handleContentsChanged0));
                 //    }
-                .withMethodBody("handleContentsChanged", MTD_void, ACC_PUBLIC,
+                .withMethodBody("handleContentsChanged", MTD_void, ACC_PRIVATE,
                     cob -> {
                         ClassDesc CD_AppContext = ClassDesc.of("sun.awt.AppContext");
                         ClassDesc CD_SunToolkit = ClassDesc.of("sun.awt.SunToolkit");
@@ -114,7 +112,7 @@ public class AgentClippy {
                 //        }
                 //        checkChange(formats);
                 //    }
-                .withMethodBody("handleContentsChanged0", MTD_void, ACC_PUBLIC, cob -> {
+                .withMethodBody("handleContentsChanged0", MTD_void, ACC_PRIVATE, cob -> {
                     ClassDesc CD_SunToolkit = ClassDesc.of("sun.awt.datatransfer.SunClipboard");
                     Label label6 = cob.newLabel();
                     Label label16 = cob.newLabel();
@@ -173,10 +171,10 @@ public class AgentClippy {
                        .aload(1)
                        .invokevirtual(CD_WClipboard, "checkChange", MethodTypeDesc.of(CD_void, ClassDesc.ofDescriptor("[J")))
                        .exceptionCatch(label6, label16, label23, ClassDesc.of("java.lang.IllegalStateException"))
-                       .exceptionCatch(label6, label16, label31, (ClassEntry)null)
-                       .exceptionCatch(label31, label33, label31, (ClassEntry)null)
-                       .exceptionCatch(label6, label42, label45, (ClassEntry)null)
-                       .exceptionCatch(label45, label49, label45, (ClassEntry)null)
+                       .exceptionCatchAll(label6, label16, label31)
+                       .exceptionCatchAll(label31, label33, label31)
+                       .exceptionCatchAll(label6, label42, label45)
+                       .exceptionCatchAll(label45, label49, label45)
                        .return_();
                 });
                 // original javac output
