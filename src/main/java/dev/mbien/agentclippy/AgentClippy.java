@@ -13,10 +13,12 @@ import java.nio.file.Path;
 import java.util.function.Consumer;
 
 import static java.lang.classfile.ClassFile.ACC_PRIVATE;
+import static java.lang.classfile.ClassFile.ACC_PUBLIC;
 import static java.lang.constant.ConstantDescs.CD_Object;
 import static java.lang.constant.ConstantDescs.MTD_void;
 import static java.lang.constant.ConstantDescs.CD_void;
 import static java.lang.constant.ConstantDescs.INIT_NAME;
+import static java.lang.constant.MethodTypeDesc.of;
 
 /**
  *
@@ -25,19 +27,16 @@ import static java.lang.constant.ConstantDescs.INIT_NAME;
 public class AgentClippy {
     
     private static final ClassDesc CD_WClipboard = ClassDesc.of("sun.awt.windows.WClipboard");
-    private static final ClassDesc CD_AppContext = ClassDesc.of("sun.awt.AppContext");
-    private static final ClassDesc CD_SunToolkit = ClassDesc.of("sun.awt.SunToolkit");
-    private static final ClassDesc CD_SunClipBoard = ClassDesc.of("sun.awt.datatransfer.SunClipboard");
     
     /// Generate bytecode exactly matching the javac output of the patched WClipboard classfile.
     /// The two methods and their javap -v -p outputs are in the comments for reference.
     public static void main(String[] args) throws IOException, InterruptedException {
         
-        // intercept / transform
+        // todo: intercept / transform
         
         ClassFile.of().buildTo(Path.of("WClipboard.class"), CD_WClipboard, clb -> {
-            clb.withFlags(ClassFile.ACC_PUBLIC)
-                .withMethodBody(INIT_NAME, MTD_void, ClassFile.ACC_PUBLIC, cob -> {
+            clb.withFlags(ACC_PUBLIC)
+                .withMethodBody(INIT_NAME, MTD_void, ACC_PUBLIC, cob -> {
                     cob.aload(0)
                        .invokespecial(CD_Object, INIT_NAME, MTD_void)
                        .return_();
@@ -58,23 +57,30 @@ public class AgentClippy {
     //        SunToolkit.postEvent(appContext, new InvocationEvent(Toolkit.getDefaultToolkit(), this::handleContentsChanged0));
     //    }
     private static final Consumer<CodeBuilder> generate_HandleContentsChanged = cob -> {
+        
+        ClassDesc CD_Runnable = ClassDesc.of("java.lang.Runnable");
+        ClassDesc CD_AppContext = ClassDesc.of("sun.awt.AppContext");
+        ClassDesc CD_SunToolkit = ClassDesc.of("sun.awt.SunToolkit");
+        ClassDesc CD_InvocationEvent = ClassDesc.of("java.awt.event.InvocationEvent");
+        ClassDesc CD_AWTEvent = ClassDesc.of("java.awt.AWTEvent");
+
         // https://github.com/openjdk/jdk/blob/df9210e6578acd53384ee1ac06601510c9a52696/test/jdk/jdk/classfile/LowAdaptTest.java#L59
         // https://github.com/openjdk/jdk/blob/6705a9255d28f351950e7fbca9d05e73942a4e27/src/java.base/share/classes/java/lang/invoke/LambdaMetafactory.java#L336
-        DirectMethodHandleDesc bsm = MethodHandleDesc.ofMethod(
-                DirectMethodHandleDesc.Kind.STATIC,
-                ClassDesc.of("java.lang.invoke.LambdaMetafactory"), "metafactory",
+        DirectMethodHandleDesc lambdaFactory = MethodHandleDesc.ofMethod(DirectMethodHandleDesc.Kind.STATIC,
+                ClassDesc.of("java.lang.invoke.LambdaMetafactory"),
+                "metafactory",
                 MethodTypeDesc.ofDescriptor(
-                         "(Ljava/lang/invoke/MethodHandles$Lookup;"
-                        + "Ljava/lang/String;"
-                        + "Ljava/lang/invoke/MethodType;"
-                        + "Ljava/lang/invoke/MethodType;"
-                        + "Ljava/lang/invoke/MethodHandle;"
-                        + "Ljava/lang/invoke/MethodType;)"
-                        + "Ljava/lang/invoke/CallSite;"
+                    "(Ljava/lang/invoke/MethodHandles$Lookup;"
+                   + "Ljava/lang/String;"
+                   + "Ljava/lang/invoke/MethodType;"
+                   + "Ljava/lang/invoke/MethodType;"
+                   + "Ljava/lang/invoke/MethodHandle;"
+                   + "Ljava/lang/invoke/MethodType;)"
+                   + "Ljava/lang/invoke/CallSite;"
                 )
         );
         Label label1 = cob.newLabel();
-        cob.invokestatic(CD_AppContext, "getAppContext", MethodTypeDesc.of(CD_AppContext))
+        cob.invokestatic(CD_AppContext, "getAppContext", of(CD_AppContext))
            .astore(1)
            .aload(1)
            .ifnonnull(label1)
@@ -83,15 +89,15 @@ public class AgentClippy {
            .return_()
            .labelBinding(label1)
            .aload(1)
-           .new_(ClassDesc.of("java.awt.event.InvocationEvent"))
+           .new_(CD_InvocationEvent)
            .dup()
-           .invokestatic(CD_SunToolkit, "getDefaultToolkit", MethodTypeDesc.of(CD_SunToolkit))
+           .invokestatic(CD_SunToolkit, "getDefaultToolkit", of(CD_SunToolkit))
            .aload(0)
-           .invokedynamic(DynamicCallSiteDesc.of(bsm, "run", MethodTypeDesc.of(ClassDesc.of("java.lang.Runnable"), CD_WClipboard)))
-           .invokespecial(ClassDesc.of("java.awt.event.InvocationEvent"), INIT_NAME, MethodTypeDesc.of(CD_void, ClassDesc.of("java.lang.Object"), ClassDesc.of("java.lang.Runnable")))
-           .invokestatic(CD_SunToolkit, "postEvent", MethodTypeDesc.of(CD_void, CD_AppContext, ClassDesc.of("java.awt.AWTEvent")))
+           .invokedynamic(DynamicCallSiteDesc.of(lambdaFactory, "run", of(CD_Runnable, CD_WClipboard)))
+           .invokespecial(CD_InvocationEvent, INIT_NAME, of(CD_void, CD_Object, CD_Runnable))
+           .invokestatic(CD_SunToolkit, "postEvent", of(CD_void, CD_AppContext, CD_AWTEvent))
            .return_();
-        // original javac output
+        // javac reference output
         //         0: invokestatic  #89                 // Method sun/awt/AppContext.getAppContext:()Lsun/awt/AppContext;
         //         3: astore_1
         //         4: aload_1
@@ -125,6 +131,12 @@ public class AgentClippy {
     //        checkChange(formats);
     //    }
     private static final Consumer<CodeBuilder> generate_ContentsChanged0 = cob -> {
+
+        ClassDesc CD_SunClipBoard = ClassDesc.of("sun.awt.datatransfer.SunClipboard");
+        ClassDesc CD_IllegalStateException = ClassDesc.of("java.lang.IllegalStateException");
+        ClassDesc CD_long_array = ClassDesc.ofDescriptor("[J");
+
+        // try-catch jump markers for exception table
         Label label6 = cob.newLabel();
         Label label16 = cob.newLabel();
         Label label23 = cob.newLabel();
@@ -133,7 +145,7 @@ public class AgentClippy {
         Label label42 = cob.newLabel();
         Label label45 = cob.newLabel();
         Label label49 = cob.newLabel();
-
+        // goto jump targets
         Label label40 = cob.newLabel();
         Label label52 = cob.newLabel();
         cob.aconst_null()
@@ -145,9 +157,9 @@ public class AgentClippy {
            .labelBinding(label6)
            .aload(0)
            .aconst_null()
-           .invokevirtual(CD_WClipboard, "openClipboard", MethodTypeDesc.of(CD_void, CD_SunClipBoard))
+           .invokevirtual(CD_WClipboard, "openClipboard", of(CD_void, CD_SunClipBoard))
            .aload(0)
-           .invokevirtual(CD_WClipboard, "getClipboardFormats", MethodTypeDesc.of(ClassDesc.ofDescriptor("[J")))
+           .invokevirtual(CD_WClipboard, "getClipboardFormats", of(CD_long_array))
            .astore(1)
            .labelBinding(label16)
            .aload(0)
@@ -180,14 +192,14 @@ public class AgentClippy {
            .labelBinding(label52)
            .aload(0)
            .aload(1)
-           .invokevirtual(CD_WClipboard, "checkChange", MethodTypeDesc.of(CD_void, ClassDesc.ofDescriptor("[J")))
-           .exceptionCatch(label6, label16, label23, ClassDesc.of("java.lang.IllegalStateException"))
+           .invokevirtual(CD_WClipboard, "checkChange", of(CD_void, CD_long_array))
+           .exceptionCatch(label6, label16, label23, CD_IllegalStateException)
            .exceptionCatchAll(label6, label16, label31)
            .exceptionCatchAll(label31, label33, label31)
            .exceptionCatchAll(label6, label42, label45)
            .exceptionCatchAll(label45, label49, label45)
            .return_();
-        // original javac output
+        // javac reference output
         //    descriptor: ()V
         //    flags: (0x0002) ACC_PRIVATE
         //    Code:
