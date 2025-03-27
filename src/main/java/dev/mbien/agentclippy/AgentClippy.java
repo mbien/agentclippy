@@ -1,19 +1,26 @@
 package dev.mbien.agentclippy;
 
 import java.io.IOException;
+import java.lang.classfile.ClassElement;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
 import java.lang.classfile.CodeBuilder;
 import java.lang.classfile.Label;
+import java.lang.classfile.MethodModel;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.DirectMethodHandleDesc;
 import java.lang.constant.DynamicCallSiteDesc;
 import java.lang.constant.MethodHandleDesc;
 import java.lang.constant.MethodTypeDesc;
+import java.lang.instrument.ClassFileTransformer;
+import java.lang.instrument.IllegalClassFormatException;
+import java.lang.instrument.Instrumentation;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.ProtectionDomain;
 import java.util.function.Consumer;
 
 import static java.lang.classfile.ClassFile.ACC_PRIVATE;
-import static java.lang.classfile.ClassFile.ACC_PUBLIC;
 import static java.lang.constant.ConstantDescs.CD_Object;
 import static java.lang.constant.ConstantDescs.MTD_void;
 import static java.lang.constant.ConstantDescs.CD_void;
@@ -26,28 +33,39 @@ import static java.lang.constant.MethodTypeDesc.of;
  */
 public class AgentClippy {
     
-    private static final ClassDesc CD_WClipboard = ClassDesc.of("sun.awt.windows.WClipboard");
+    static final ClassDesc CD_WClipboard = ClassDesc.of("sun.awt.windows.WClipboard");
     
-    /// Generate bytecode exactly matching the javac output of the patched WClipboard classfile.
-    /// The two methods and their javap -v -p outputs are in the comments for reference.
-    public static void main(String[] args) throws IOException, InterruptedException {
-        
-        // todo: intercept / transform
-        
-        ClassFile.of().buildTo(Path.of("WClipboard.class"), CD_WClipboard, clb -> {
-            clb.withFlags(ACC_PUBLIC)
-                .withMethodBody(INIT_NAME, MTD_void, ACC_PUBLIC, cob -> {
-                    cob.aload(0)
-                       .invokespecial(CD_Object, INIT_NAME, MTD_void)
-                       .return_();
-                })
-                .withMethodBody("handleContentsChanged", MTD_void, ACC_PRIVATE, generate_HandleContentsChanged)
-                .withMethodBody("handleContentsChanged0", MTD_void, ACC_PRIVATE, generate_ContentsChanged0);
-        });
-        // dump generated class file to console
-        new ProcessBuilder("javap", "-v", "-p", "WClipboard.class").inheritIO().start().waitFor();
+    // test transformer
+    public static void premain(String agentArgs, Instrumentation inst) {
+        inst.addTransformer(new ClassFileTransformer() {
+            @Override
+            public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classfileBuffer) throws IllegalClassFormatException {
+                if ("sun/awt/windows/WClipboard".equals(className)) {
+                    ClassModel cm = ClassFile.of().parse(classfileBuffer);
+                    byte[] newBytes = ClassFile.of().build(cm.thisClass().asSymbol(), cb -> {
+                            for (ClassElement ce : cm) {
+                                if (ce instanceof MethodModel mm && mm.methodName().stringValue().equals("handleContentsChanged")) {
+                                    cb.withMethodBody("handleContentsChanged", MTD_void, ACC_PRIVATE, generate_HandleContentsChanged);
+                                } else {
+                                    cb.with(ce);
+                                }
+                            }
+                            cb.withMethodBody("handleContentsChanged0", MTD_void, ACC_PRIVATE, generate_ContentsChanged0);
+                        }
+                    );
+                    // debug output
+                    try {
+                        Files.write(Path.of("Transformed.class"), newBytes);
+                    } catch (IOException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                    return newBytes;
+                }
+                return null;
+            }
+        }, false);
     }
-
+    
     //    private void handleContentsChanged() {
     //        AppContext appContext = AppContext.getAppContext();
     //        if (appContext == null) {
@@ -56,7 +74,7 @@ public class AgentClippy {
     //        }
     //        SunToolkit.postEvent(appContext, new InvocationEvent(Toolkit.getDefaultToolkit(), this::handleContentsChanged0));
     //    }
-    private static final Consumer<CodeBuilder> generate_HandleContentsChanged = cob -> {
+    static final Consumer<CodeBuilder> generate_HandleContentsChanged = cob -> {
         
         ClassDesc CD_Runnable = ClassDesc.of("java.lang.Runnable");
         ClassDesc CD_AppContext = ClassDesc.of("sun.awt.AppContext");
@@ -130,7 +148,7 @@ public class AgentClippy {
     //        }
     //        checkChange(formats);
     //    }
-    private static final Consumer<CodeBuilder> generate_ContentsChanged0 = cob -> {
+    static final Consumer<CodeBuilder> generate_ContentsChanged0 = cob -> {
 
         ClassDesc CD_SunClipBoard = ClassDesc.of("sun.awt.datatransfer.SunClipboard");
         ClassDesc CD_IllegalStateException = ClassDesc.of("java.lang.IllegalStateException");
