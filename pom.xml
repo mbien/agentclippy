@@ -48,7 +48,8 @@
                 <executions>
                     <execution>
                         <id>unittests</id>
-                        <phase>install</phase>
+                        <!-- run unit tests post package to be able to pass the agent -->
+                        <phase>integration-test</phase>
                         <goals>
                             <goal>test</goal>
                         </goals>

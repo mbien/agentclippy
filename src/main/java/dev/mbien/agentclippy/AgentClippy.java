@@ -22,6 +22,7 @@ import java.util.function.Consumer;
 
 import static java.lang.classfile.ClassFile.ACC_PRIVATE;
 import static java.lang.constant.ConstantDescs.CD_Object;
+import static java.lang.constant.ConstantDescs.CD_long;
 import static java.lang.constant.ConstantDescs.MTD_void;
 import static java.lang.constant.ConstantDescs.CD_void;
 import static java.lang.constant.ConstantDescs.INIT_NAME;
@@ -152,7 +153,7 @@ public class AgentClippy {
 
         ClassDesc CD_SunClipBoard = ClassDesc.of("sun.awt.datatransfer.SunClipboard");
         ClassDesc CD_IllegalStateException = ClassDesc.of("java.lang.IllegalStateException");
-        ClassDesc CD_long_array = ClassDesc.ofDescriptor("[J");
+        ClassDesc CD_long_array = CD_long.arrayType();
 
         // try-catch jump markers for exception table
         Label label6 = cob.newLabel();
